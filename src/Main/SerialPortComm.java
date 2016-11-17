@@ -1,86 +1,85 @@
 package Main;
 
-import jssc.SerialPort;
-import jssc.SerialPortEvent;
-import jssc.SerialPortEventListener;
-import jssc.SerialPortList;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Scanner;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.regex.Pattern;
 
-public class SerialPortComm {
+public class SerialPortComm extends Thread {
 
-	public static class PortReader implements SerialPortEventListener {
-		public SerialPort serialPort = null;
+    public static void main(String[] args) {
+        SerialPortComm spc = new SerialPortComm();
 
-		//public StringBuilder buffer = new StringBuilder();
+        spc.initialize("null");
 
-		public boolean side = false;
+    }
 
-		public int left = 50;
-		public int right = 50;
-		
-		public PortReader(SerialPort port) {
-			this.serialPort = port;
-		}
+    Process p = null;
 
-		@Override
-		public synchronized void serialEvent(SerialPortEvent event) {
-			if (event.isRXCHAR()) {
-				try {
-					for (byte b : serialPort.readBytes(serialPort.getInputBufferBytesCount())) {
-						switch (b) {
-						case ':':
-							side = false;
-							break;
-						case ';':
-							side = true;
-							break;
-						default:
-							if(side){
-								right = Integer.valueOf(new String(new byte[]{b}));
-							}else{
-								left = Integer.valueOf(new String(new byte[]{b}));
-							}
-							break;
-						}
-					}
+    int p1 = 0;
+    int p2 = 0;
 
-				} catch (Exception e) {
-					e.printStackTrace();
-				}
-			}
-		}
+    @Override
+    public void run() {
 
-	}
+        InputStream is = p.getInputStream();
 
-	public PortReader getReader() {
-		return io;
-	}
+        Scanner s = new Scanner(is);
 
-	private SerialPort serialPort;
-	private PortReader io = null;
+        while (s.hasNext("Waiting")) {
+            System.out.println("Waiting");
+        }
 
-	public void initialize(String portName) throws Exception {
-		serialPort = new SerialPort(portName);
-		serialPort.openPort();
-		serialPort.setParams(SerialPort.BAUDRATE_9600, SerialPort.DATABITS_8, SerialPort.STOPBITS_1,
-				SerialPort.PARITY_NONE);
-		serialPort.setFlowControlMode(SerialPort.FLOWCONTROL_RTSCTS_IN | SerialPort.FLOWCONTROL_RTSCTS_OUT);
-		io = new PortReader(serialPort);
-		serialPort.addEventListener(io, SerialPort.MASK_RXCHAR);
-	}
+        //s.useDelimiter(";");
 
-	public void closeConnection() throws Exception {
-		serialPort.closePort();
-	}
+        Pattern p = Pattern.compile(".*:.*;");
+        
+        while (!this.isInterrupted()) {
 
-	public void sendData(String data) {
-		try {
-			serialPort.writeString(data);
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-	}
+            if (s.hasNext(p)) {
+                
+                String s1 = s.next(p);
+                
+                if (s1.isEmpty()) {
+                    continue;
+                }
+                
+                String[] string = s1.split(":");
 
-	public String[] getAvailableSerialPorts() {
-		return SerialPortList.getPortNames();
-	}
+                try {
+                    p1 = Integer.valueOf(string[0]);
+                    p2 = Integer.valueOf(string[1]);
+                } catch (Exception e) {
+
+                }
+
+            }else if(s.hasNext()){
+                s.next();
+            }
+
+            Thread.yield();
+        }
+
+    }
+
+    public void initialize(String portName) {
+        try {
+            p = Runtime.getRuntime().exec("python /path/to/serialIn.py " + portName);
+        } catch (IOException ex) {
+            Logger.getLogger(SerialPortComm.class.getName()).log(Level.SEVERE, null, ex);
+        }
+
+        this.start();
+    }
+
+    public void closeConnection() {
+        if (p.isAlive()) {
+            p.destroy();
+        } else {
+            System.err.println("Tried closing Serial Port Reader, but was closed already");
+        }
+    }
+
 }
